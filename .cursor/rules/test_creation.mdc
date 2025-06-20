@@ -1,0 +1,331 @@
+---
+description: Generate Rails specs for the missing test coverage in the branch
+globs: 
+alwaysApply: false
+---
+# RSpec Testing Guidelines for Rails API
+
+## Directory Structure
+Tests (specs) should be organized in the `spec` directory:
+- Model specs: `spec/models`
+- Request specs: `spec/requests`
+- Controller specs: `spec/controllers` (if needed)
+- Feature specs: `spec/features`
+- Support files: `spec/support`
+- Factories: `spec/factories`
+- Shared examples: `spec/shared_examples`
+- Spec helper: `spec/spec_helper.rb`
+- Rails helper: `spec/rails_helper.rb`
+
+## Test File Naming
+- Spec files should end with `_spec.rb`
+- Name should reflect the tested component: `user_spec.rb` for `User` model
+- Request specs should follow pattern: `users_api_spec.rb` or `users_spec.rb`
+
+## Basic RSpec Structure
+```ruby
+require 'rails_helper'
+
+RSpec.describe User, type: :model do
+  # Use let for setting up test data
+  let(:user) { create(:user) }  # Using FactoryBot
+
+  # Use context to group related tests
+  context 'validations' do
+    it 'is valid with valid attributes' do
+      expect(user).to be_valid
+    end
+  end
+end
+```
+
+## Best Practices
+1. Use descriptive contexts and examples
+2. Follow the Four-Phase Test pattern: Setup, Exercise, Verify, Teardown
+3. Use `let` instead of instance variables
+4. Use factories (FactoryBot) instead of fixtures
+5. Keep specs isolated and independent
+6. Use shared examples for common behavior
+7. Write focused, single-responsibility tests
+8. External web requests must be MOCKED
+
+## Test Data Management
+```ruby
+# Using FactoryBot
+FactoryBot.define do
+  factory :user do
+    email { Faker::Internet.email }
+    password { 'password123' }
+    
+    # Define traits for variations
+    trait :admin do
+      admin { true }
+    end
+  end
+end
+```
+
+## Running Specs
+```bash
+# Run all specs
+bundle exec rspec
+
+# Run specific spec file
+bundle exec rspec spec/models/user_spec.rb
+
+# Run specific line
+bundle exec rspec spec/models/user_spec.rb:10
+
+# Run with documentation format
+bundle exec rspec --format documentation
+```
+
+## Mocking and Stubbing
+```ruby
+# Using doubles
+let(:service) { instance_double(PaymentService) }
+
+# Stubbing methods
+before do
+  allow(service).to receive(:process).and_return(true)
+end
+
+# Expecting calls
+expect(service).to have_received(:process).with(user)
+```
+
+## Common Matchers
+- Equality: `expect(actual).to eq(expected)`
+- Truthiness: `expect(actual).to be_truthy`
+- Presence: `expect(actual).to be_present`
+- Errors: `expect { action }.to raise_error(ErrorClass)`
+- Change: `expect { action }.to change { object.value }.from(old).to(new)`
+- HTTP Status: `expect(response).to have_http_status(:ok)`
+- JSON Response: `expect(response.body).to include_json(expected_json)`
+
+## Example Specs
+
+### Model Spec
+```ruby
+RSpec.describe User, type: :model do
+  describe 'validations' do
+    it { should validate_presence_of(:email) }
+    it { should validate_uniqueness_of(:email).case_insensitive }
+  end
+
+  describe 'associations' do
+    it { should have_many(:posts) }
+    it { should belong_to(:organization) }
+  end
+
+  describe '#full_name' do
+    let(:user) { build(:user, first_name: 'John', last_name: 'Doe') }
+
+    it 'returns the combined full name' do
+      expect(user.full_name).to eq('John Doe')
+    end
+  end
+end
+```
+
+### Request Spec
+```ruby
+RSpec.describe 'Users API', type: :request do
+  describe 'GET /api/users' do
+    let!(:users) { create_list(:user, 3) }
+
+    before { get '/api/users' }
+
+    it 'returns all users' do
+      expect(response).to have_http_status(:ok)
+      expect(json_response.size).to eq(3)
+    end
+  end
+
+  describe 'POST /api/users' do
+    let(:valid_attributes) { attributes_for(:user) }
+
+    it 'creates a new user' do
+      expect {
+        post '/api/users', params: { user: valid_attributes }
+      }.to change(User, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+    end
+  end
+end
+```
+
+## Configuration Tips
+1. Enable `config.include FactoryBot::Syntax::Methods` in `rails_helper.rb`
+2. Use database_cleaner for consistent test data
+3. Configure VCR for external API testing
+4. Use `shoulda-matchers` for common Rails validations
+5. Set up SimpleCov for test coverage metrics
+
+Remember to:
+- Write specs covering business logic. High quality strong test cases recommended
+- Use meaningful test data with Faker
+- Keep specs DRY with shared examples and contexts
+- Document complex setups in spec/support files
+- Run specs regularly and maintain high coverage
+
+## Required Steps (MUST Follow in Order)
+
+### 1. Generate Branch Coverage Report
+```bash
+# Get files changed compared to main branch
+git diff main...HEAD --name-only | grep '\.rb$' > changed_files.txt
+
+# Run specs for changed files
+COVERAGE=true bundle exec rspec $(cat changed_files.txt | sed 's/^/spec\//' | sed 's/\.rb$/\_spec.rb/') --format documentation
+```
+
+### 2. Run Tests in Docker
+```bash
+# Build and run test suite
+docker-compose -f docker-compose.test.yml build
+docker-compose -f docker-compose.test.yml run --rm test
+
+# Debug failed specs
+docker-compose -f docker-compose.test.yml run --rm test rspec spec/path/to/failed_spec.rb --format documentation
+```
+
+### 3. Handle Failed Specs
+For each failed spec:
+1. Rerun in Docker with debug output
+2. Classify as either:
+   - Spec Issue: Fix and rerun 5 times atleast until passing
+   - Genuine Bug: Mark as failed, create ticket, add TODO
+
+### 4. Verify Coverage
+```ruby
+# spec/spec_helper.rb
+require 'simplecov'
+
+SimpleCov.start 'rails' do
+  # Only check coverage for branch diff
+  changed_files = `git diff main...HEAD --name-only`.split("\n")
+  add_filter do |source_file|
+    !changed_files.include?(source_file.filename)
+  end
+  
+  enable_coverage :branch
+  minimum_coverage line: 100, branch: 100
+end
+```
+
+## Test Classification Requirements
+
+### Required Comment Structure
+EVERY spec MUST have these classification comments:
+```ruby
+# Classification: [High Importance|Low Importance|Invalid]
+# Type: [Happy Path|Edge Case|N/A]
+# Scenario: [Brief description]
+# Impact: [Business impact]
+```
+
+### Examples of Properly Classified Specs
+
+#### High Importance Example
+```ruby
+RSpec.describe PaymentProcessor do
+  # Classification: High Importance
+  # Type: Happy Path
+  # Scenario: Standard payment processing
+  # Impact: Core business transaction
+  it 'processes valid payment' do
+    payment = create(:payment, :valid)
+    expect(PaymentProcessor.new(payment).process).to be_successful
+  end
+
+  # Classification: High Importance
+  # Type: Edge Case
+  # Scenario: Payment with maximum allowed amount
+  # Impact: Transaction limits compliance
+  it 'handles maximum payment amount' do
+    payment = create(:payment, amount: PaymentProcessor::MAX_AMOUNT)
+    expect(PaymentProcessor.new(payment).process).to be_successful
+  end
+end
+```
+
+#### Low Importance Example
+```ruby
+# Classification: Low Importance
+# Type: Happy Path
+# Scenario: User preference update
+# Impact: Non-critical feature
+it 'updates theme preference' do
+  user.update_preferences(theme: 'dark')
+  expect(user.preferences[:theme]).to eq('dark')
+end
+```
+
+#### Invalid Example
+```ruby
+# Classification: Invalid
+# Type: N/A
+# Scenario: Rails internal validation
+# Impact: None - Framework internal
+# REASON FOR INVALIDITY: Framework implementation detail
+xit 'should not test rails internals' do
+  # Invalid test - do not implement
+end
+```
+
+### Example of Handling Failed Specs
+
+#### Genuine Bug Example
+```ruby
+# Classification: High Importance
+# Type: Edge Case
+# Scenario: Decimal amount handling
+# Impact: Financial accuracy
+# Status: FAILED - Genuine Bug
+# TODO: Bug - Incorrect decimal rounding in payment processor
+xit 'handles decimal amounts correctly' do
+  payment = create(:payment, amount: 10.99)
+  expect(PaymentProcessor.new(payment).process).to be_successful
+end
+```
+
+#### Fixed Spec Issue Example
+```ruby
+# Classification: High Importance
+# Type: Happy Path
+# Scenario: User authentication
+# Impact: Security
+# Status: Fixed - Was spec setup issue
+it 'authenticates valid user' do
+  user = create(:user, :with_valid_credentials)
+  expect(AuthService.new(user).authenticate).to be_successful
+end
+```
+
+## Final Review Checklist
+Before submitting, verify:
+
+1. Test Execution ✓
+   - [ ] All tests run in Docker
+   - [ ] All specs either pass or are marked as failed bugs
+
+2. Coverage ✓
+   - [ ] 100% line coverage for branch diff
+   - [ ] 100% branch coverage for branch diff
+
+3. Classification ✓
+   - [ ] Every spec has required classification comments
+   - [ ] All edge cases identified and classified
+   - [ ] No unclassified specs exist
+
+4. Bug Documentation ✓
+   - [ ] Failed specs due to bugs have TODO comments
+
+## Critical Rules to Remember
+1. MUST Generate specs for missing coverage for branch diff
+2. MUST achieve 100% line and branch coverage for branch diff
+3. Prioritize test quality over quantity
+4. Verify specs are passing before submission. ALWAYS run specs in Docker
+5. Report genuine bugs discovered during testing. MUST document bugs with TODO comment

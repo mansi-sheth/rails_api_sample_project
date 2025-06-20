@@ -8,7 +8,7 @@ FROM node:$NODE_VERSION AS node
 FROM ruby:${RUBY_VERSION}-slim
 
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential libssl-dev libpq-dev vim git libsasl2-dev libyaml-dev curl && \
+    apt-get install --no-install-recommends -y build-essential libssl-dev libpq-dev git libsasl2-dev libyaml-dev curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy node binaries from node image.
@@ -19,14 +19,15 @@ COPY --from=node /opt /opt
 ENV WORK_ROOT=/src
 ENV APP_HOME=$WORK_ROOT/app/
 ENV LANG=C.UTF-8
+ENV RAILS_ENV=test
+ENV POSTGRES_HOST=db
+ENV POSTGRES_USER=postgres
 
 # Create app directory.
 RUN mkdir -p $APP_HOME
-
-# Setup work directory.
 WORKDIR $APP_HOME
 
-RUN gem install foreman bundler
+RUN gem install bundler
 
 # Copy dependencies files and install libraries.
 COPY package.json yarn.lock .yarnrc.yml ./
@@ -41,9 +42,5 @@ COPY . .
 
 RUN yarn build
 
-# Entrypoint prepares the database.
-ENTRYPOINT ["./bin/docker-entrypoint"]
-
-# Start the server by default, this can be overwritten at runtime
-EXPOSE 3000
-CMD ["./bin/dev"]
+# The default command will run RSpec
+CMD ["bundle", "exec", "rspec"] 
