@@ -58,7 +58,7 @@ FROM base
 
 # Install packages needed for deployment
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libpq-dev libvips libjemalloc2 libyaml-dev && \
+    apt-get install --no-install-recommends -y git curl libpq-dev libvips libjemalloc2 libyaml-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create app directory.
