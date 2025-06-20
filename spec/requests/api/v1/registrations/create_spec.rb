@@ -47,6 +47,76 @@ describe 'POST api/v1/users/sign_up' do
     end
   end
 
+  context 'with role_ids' do
+    let(:admin_role) { create(:admin_role) }
+    let(:agent_role) { create(:agent_role) }
+    
+    let(:params_with_roles) do
+      {
+        user: {
+          email: 'email@example.com',
+          password: 'password',
+          password_confirmation: 'password',
+          username: 'username',
+          first_name: 'first name',
+          last_name: 'last name',
+          role_ids: [admin_role.id, agent_role.id]
+        }
+      }
+    end
+
+    before do
+      admin_role
+      agent_role
+    end
+
+    it 'assigns roles to the user' do
+      post user_registration_path, params: params_with_roles, as: :json
+      
+      expect(response).to be_successful
+      user = User.last
+      expect(user.roles).to include(admin_role, agent_role)
+    end
+
+    it 'returns user with roles in response' do
+      post user_registration_path, params: params_with_roles, as: :json
+      
+      user = User.last
+      expect(json[:user][:roles]).to be_present
+      expect(json[:user][:roles].length).to eq(2)
+      
+      role_ids = json[:user][:roles].map { |role| role['id'] }
+      expect(role_ids).to include(admin_role.id, agent_role.id)
+    end
+
+    it 'handles empty role_ids array' do
+      params_with_empty_roles = params.deep_merge(user: { role_ids: [] })
+      post user_registration_path, params: params_with_empty_roles, as: :json
+      
+      expect(response).to be_successful
+      user = User.last
+      expect(user.roles).to be_empty
+    end
+
+    it 'handles string role_ids' do
+      params_with_string_roles = params.deep_merge(user: { role_ids: [admin_role.id.to_s] })
+      post user_registration_path, params: params_with_string_roles, as: :json
+      
+      expect(response).to be_successful
+      user = User.last
+      expect(user.roles).to include(admin_role)
+    end
+
+    it 'ignores invalid role_ids' do
+      params_with_invalid_roles = params.deep_merge(user: { role_ids: [999999] })
+      post user_registration_path, params: params_with_invalid_roles, as: :json
+      
+      expect(response).to be_successful
+      user = User.last
+      expect(user.roles).to be_empty
+    end
+  end
+
   context 'with incorrect params' do
     let(:params) do
       {

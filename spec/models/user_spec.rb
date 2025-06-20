@@ -32,6 +32,11 @@
 #
 
 describe User do
+  describe 'associations' do
+    it { is_expected.to have_many(:user_roles).dependent(:destroy) }
+    it { is_expected.to have_many(:roles).through(:user_roles) }
+  end
+
   describe 'validations' do
     subject { build(:user) }
 
@@ -42,6 +47,18 @@ describe User do
 
       it { is_expected.to validate_uniqueness_of(:email).case_insensitive.scoped_to(:provider) }
       it { is_expected.to validate_presence_of(:email) }
+    end
+  end
+
+  describe 'nested attributes' do
+    it { is_expected.to accept_nested_attributes_for(:user_roles).allow_destroy(true) }
+  end
+
+  describe 'attributes' do
+    it 'has role_ids accessor' do
+      user = build(:user)
+      expect(user).to respond_to(:role_ids)
+      expect(user).to respond_to(:role_ids=)
     end
   end
 
@@ -80,6 +97,134 @@ describe User do
       it 'returns the given user' do
         expect(described_class.from_social_provider('provider', params))
           .to eq(user)
+      end
+    end
+  end
+
+  describe 'role management' do
+    let(:user) { create(:user) }
+    let(:admin_role) { create(:admin_role) }
+    let(:agent_role) { create(:agent_role) }
+
+    describe 'role assignment' do
+      it 'can assign roles to user' do
+        user.roles << admin_role
+        expect(user.roles).to include(admin_role)
+      end
+
+      it 'can assign multiple roles' do
+        user.roles = [admin_role, agent_role]
+        expect(user.roles).to include(admin_role, agent_role)
+      end
+    end
+
+    describe '#sync_roles' do
+      context 'when role_ids is provided' do
+        it 'syncs roles based on role_ids array' do
+          user.role_ids = [admin_role.id, agent_role.id]
+          user.save
+
+          expect(user.roles).to include(admin_role, agent_role)
+          expect(user.roles.count).to eq(2)
+        end
+
+        it 'removes roles not in the new role_ids' do
+          user.roles << admin_role
+          user.role_ids = [agent_role.id]
+          user.save
+
+          expect(user.roles).to include(agent_role)
+          expect(user.roles).not_to include(admin_role)
+        end
+
+        it 'handles empty role_ids array' do
+          user.roles << admin_role
+          user.role_ids = []
+          user.save
+
+          expect(user.roles).to be_empty
+        end
+
+        it 'handles string role_ids' do
+          user.role_ids = [admin_role.id.to_s, agent_role.id.to_s]
+          user.save
+
+          expect(user.roles).to include(admin_role, agent_role)
+        end
+
+        it 'does not create duplicate user_roles' do
+          user.roles << admin_role
+          user.role_ids = [admin_role.id, agent_role.id]
+          user.save
+
+          expect(user.user_roles.where(role: admin_role).count).to eq(1)
+        end
+      end
+
+      context 'when role_ids is not provided' do
+        it 'does not sync roles' do
+          user.roles << admin_role
+          user.save
+
+          expect(user.roles).to include(admin_role)
+        end
+      end
+
+      context 'when role_ids is not an array' do
+        it 'does not sync roles' do
+          user.roles << admin_role
+          user.role_ids = 'invalid'
+          user.save
+
+          expect(user.roles).to include(admin_role)
+        end
+      end
+    end
+
+    describe '#as_json' do
+      before do
+        user.roles = [admin_role, agent_role]
+        user.save
+      end
+
+      it 'includes roles in JSON response' do
+        json = user.as_json
+        
+        expect(json['roles']).to be_present
+        expect(json['roles'].count).to eq(2)
+        
+        role_data = json['roles'].find { |r| r['id'] == admin_role.id }
+        expect(role_data['id']).to eq(admin_role.id)
+        expect(role_data['name']).to eq(admin_role.name)
+        
+        # Should only include id and name, not other attributes
+        expect(role_data.keys).to match_array(['id', 'name'])
+      end
+
+      it 'returns empty roles array when user has no roles' do
+        user.roles.clear
+        json = user.as_json
+        
+        expect(json['roles']).to eq([])
+      end
+    end
+  end
+
+  describe 'callbacks' do
+    describe 'after_save with role_ids' do
+      let(:user) { create(:user) }
+      let(:admin_role) { create(:admin_role) }
+
+      it 'triggers sync_roles when role_ids is present' do
+        expect(user).to receive(:sync_roles)
+        user.role_ids = [admin_role.id]
+        user.save
+      end
+
+      it 'does not trigger sync_roles when role_ids is not present' do
+        expect(user).not_to receive(:sync_roles)
+        user.username = 'new_username'
+        user.save
       end
     end
   end
