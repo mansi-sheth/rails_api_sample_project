@@ -1,0 +1,20 @@
+{
+  "terminals": [],
+  "backgroundAgent": {
+    "enabled": true,
+    "requirements": {
+      "cpu": 2,
+      "memory": "4Gi",
+      "storage": "10Gi"
+    },
+    "env": {
+      "RAILS_ENV": "development",
+      "BUNDLE_PATH": "vendor/bundle",
+      "NODE_ENV": "development"
+    }
+  },
+  "build": {
+    "context": ".",
+    "dockerfile": "Dockerfile"
+  }
+}
