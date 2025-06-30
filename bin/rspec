@@ -13,7 +13,7 @@ OptionParser.new do |opts|
 end.parse!
 
 if running_with_docker?
-  compose_command = "docker compose -f docker-compose.test.yml run --build web ./bin/rspec #{Shellwords.join(ARGV)}"
+  compose_command = "docker compose -f docker-compose.test.yml run --build test ./bin/rspec #{Shellwords.join(ARGV)}"
 
   if options[:remove_containers]
     compose_command += '&& docker compose -f docker-compose.test.yml down'

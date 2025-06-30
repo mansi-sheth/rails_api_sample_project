@@ -1,24 +1,26 @@
 # frozen_string_literal: true
 
-module Api
+module API
   module V1
-    class RolesController < ApplicationController
+    class RolesController < API::V1::APIController
       before_action :set_role, only: [:show, :update, :destroy]
 
       # GET /api/v1/roles
       def index
-        @roles = Role.all
+        @roles = policy_scope(Role.select(:id, :name, :default, :created_at, :updated_at))
         render json: @roles
       end
 
       # GET /api/v1/roles/1
       def show
+        authorize @role
         render json: @role
       end
 
       # POST /api/v1/roles
       def create
         @role = Role.new(role_params)
+        authorize @role
 
         if @role.save
           render json: @role, status: :created
@@ -29,6 +31,7 @@ module Api
 
       # PATCH/PUT /api/v1/roles/1
       def update
+        authorize @role
         if @role.default?
           render json: { error: 'Cannot modify a default role' }, status: :forbidden
         elsif @role.update(role_params)
@@ -40,6 +43,7 @@ module Api
 
       # DELETE /api/v1/roles/1
       def destroy
+        authorize @role
         if @role.destroy
           head :no_content
         else

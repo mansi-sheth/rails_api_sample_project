@@ -89,15 +89,24 @@ class User < ApplicationRecord
   def sync_roles
     return unless role_ids.is_a?(Array)
 
-    # Convert string IDs to integers
-    role_ids_array = role_ids.map(&:to_i)
+    # Convert string IDs to integers and filter out invalid ones
+    role_ids_array = role_ids.map(&:to_i).uniq
     
-    # Remove roles that are not in the new role_ids
-    user_roles.where.not(role_id: role_ids_array).destroy_all
+    # Filter out invalid role IDs by checking they exist
+    valid_role_ids = role_ids_array & Role.where(id: role_ids_array).pluck(:id)
     
-    # Add new roles
-    role_ids_array.each do |role_id|
-      user_roles.find_or_create_by!(role_id: role_id)
+    # Remove roles that are not in the new valid role_ids
+    user_roles.where.not(role_id: valid_role_ids).destroy_all
+    
+    # Get existing role IDs to avoid duplicates
+    existing_role_ids = user_roles.pluck(:role_id)
+    new_role_ids = valid_role_ids - existing_role_ids
+    
+    # Bulk create new user roles
+    new_user_roles = new_role_ids.map do |role_id|
+      { user_id: id, role_id: role_id, created_at: Time.current, updated_at: Time.current }
     end
+    
+    UserRole.insert_all(new_user_roles) if new_user_roles.any?
   end
 end

@@ -41,11 +41,17 @@ class Role < ApplicationRecord
 
   # Create default roles if they don't exist
   def self.create_defaults
-    default_roles.each do |role_name|
-      find_or_create_by!(name: role_name) do |role|
-        role.default = true
-      end
+    existing_names = where(name: default_roles).pluck(:name)
+    missing_roles = default_roles - existing_names
+    
+    return if missing_roles.empty?
+    
+    # Bulk create missing roles to avoid N+1 queries
+    roles_to_create = missing_roles.map do |role_name|
+      { name: role_name, default: true, created_at: Time.current, updated_at: Time.current }
     end
+    
+    insert_all(roles_to_create)
   end
 
   private

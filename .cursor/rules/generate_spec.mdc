@@ -1,0 +1,712 @@
+---
+description: Generate Rails specs for the missing test coverage in the branch
+globs: 
+alwaysApply: false
+---
+# RSpec Testing Guidelines for Rails API Sample Project
+
+## Test File Naming
+- Spec files should end with `_spec.rb`
+- Name should reflect the tested component: `user_spec.rb` for `User` model
+- Follow Rails convention: `spec/models/`, `spec/controllers/`, `spec/requests/`
+
+## Basic RSpec Structure
+
+### Standard Structure (Repository Pattern)
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+describe User do  # Note: This repository uses `describe` without RSpec prefix
+  # Use let for setting up test data
+  let(:user) { create(:user) }  # Using FactoryBot
+
+  # Use context to group related tests
+  context 'validations' do
+    it 'is valid with valid attributes' do
+      expect(user).to be_valid
+    end
+  end
+end
+```
+
+### API Request Spec Structure
+```ruby
+# frozen_string_literal: true
+
+describe 'GET api/v1/users/:id' do
+  subject { get api_v1_user_path, headers: auth_headers }
+
+  let(:user) { create(:user) }
+
+  it_behaves_like 'there must not be a Set-Cookie in Header'
+
+  it 'returns success' do
+    subject
+    expect(response).to have_http_status(:success)
+  end
+end
+```
+
+## Best Practices for New Specs
+1. Use descriptive contexts and examples
+2. Follow the Four-Phase Test pattern: Setup, Exercise, Verify, Teardown
+3. Use `let` instead of instance variables
+4. Use FactoryBot factories for test data creation
+5. Keep specs isolated and independent
+6. Use shared examples for common behavior
+7. Write focused, single-responsibility tests
+8. External web requests must be MOCKED using WebMock
+9. **NEW SPECS MUST include test classification comments**
+
+## Test Data Management
+
+### FactoryBot Pattern (Repository Standard)
+```ruby
+# Using FactoryBot - standard approach in this repository
+let(:user) { create(:user) }
+let(:role) { create(:role) }
+let(:admin_role) { create(:admin_role) }
+
+# Using traits for variations
+let(:user_with_role) { create(:user, :with_admin_role) }
+```
+
+### Factory Definitions (Follow Repository Pattern)
+```ruby
+FactoryBot.define do
+  factory :user do
+    email    { Faker::Internet.unique.email }
+    password { Faker::Internet.password(min_length: 8) }
+    username { Faker::Internet.unique.user_name }
+    uid      { Faker::Internet.uuid }
+  end
+
+  factory :role do
+    sequence(:name) { |n| "Role #{n}" }
+    default { false }
+
+    factory :admin_role do
+      name { Role::ADMIN }
+      default { true }
+    end
+  end
+end
+```
+
+## Running Specs
+**Docker-based testing environment** (Repository Standard)
+
+This repository uses Docker for running specs through docker-compose. The `./bin/rspec` script automatically detects Docker availability and runs tests in the containerized environment.
+
+```bash
+# Run all specs (Docker-based - Repository Standard)
+./bin/rspec
+
+# Run specific spec file
+./bin/rspec spec/models/user_spec.rb
+
+# Run specific line
+./bin/rspec spec/models/user_spec.rb:10
+
+# Run with documentation format
+./bin/rspec --format documentation
+
+# Run with coverage
+COVERAGE=true ./bin/rspec
+
+# Run with coverage for specific file
+COVERAGE=true ./bin/rspec spec/models/user_spec.rb
+
+# Remove containers after test completion
+./bin/rspec --remove-containers
+
+# For direct bundle exec (only when Docker is not available)
+bundle exec rspec  # Fallback when DOCKER_ENABLED != 'true'
+```
+
+### Docker Environment Notes
+- Tests run in isolated Docker containers with PostgreSQL database
+- Chrome server container available for Capybara/Selenium tests
+- Build process includes asset compilation and dependency installation
+- Use `--remove-containers` flag to clean up containers after testing
+
+## Repository-Specific Setup Patterns
+
+### Authentication Setup (API Specs)
+```ruby
+# This repository uses devise-token-auth
+describe 'GET api/v1/users/:id' do
+  subject { get api_v1_user_path, headers: auth_headers }
+  
+  let(:user) { create(:user) }
+  
+  # auth_headers method comes from Helpers module
+  # Returns token-based authentication headers
+end
+```
+
+### Shared Examples Usage
+```ruby
+# Repository provides these shared examples:
+it_behaves_like 'there must not be a Set-Cookie in Header'
+it_behaves_like 'does not check authenticity token'
+```
+
+### Global Test Helpers
+Available from `spec/helpers.rb`:
+```ruby
+# Helper method to parse JSON responses
+def json
+  JSON.parse(response.body).with_indifferent_access
+end
+
+# Helper method for authentication headers
+def auth_headers
+  user.create_new_auth_token
+end
+```
+
+## Mocking and Stubbing
+
+### Repository Patterns
+```ruby
+# Simple mocking (repository standard)
+allow_any_instance_of(API::V1::UsersController).to receive(:current_user).and_return(user)
+
+# WebMock for external services (configured globally)
+# WebMock.disable_net_connect! is already configured in rails_helper
+```
+
+### Best Practice Patterns (For New Specs)
+```ruby
+# Using instance_double (preferred for new specs)
+let(:service) { instance_double(SomeService) }
+
+# Stubbing methods
+before do
+  allow(service).to receive(:process).and_return(true)
+end
+
+# Expecting calls
+expect(service).to have_received(:process).with(user)
+```
+
+## Common Matchers
+
+### Repository-Specific Matchers
+- HTTP Status: `expect(response).to have_http_status(:success)`
+- JSON Response: `expect(json[:user][:id]).to eq(user.id)`
+- Record Changes: `expect { action }.to change(User, :count).by(1)`
+- Shoulda Matchers: `it { is_expected.to validate_presence_of(:email) }`
+- Uniqueness: `it { is_expected.to validate_uniqueness_of(:email).case_insensitive }`
+
+### Standard Matchers
+- Equality: `expect(actual).to eq(expected)`
+- Truthiness: `expect(actual).to be_truthy` / `expect(actual).to be_falsey`
+- Presence: `expect(actual).to be_present`
+- Errors: `expect { action }.to raise_error(ErrorClass)`
+- Change: `expect { action }.to change { object.value }.from(old).to(new)`
+
+## Example Specs
+
+### Model Spec (Repository Pattern)
+```ruby
+# frozen_string_literal: true
+
+  describe 'validations' do
+    subject { build(:user) }
+
+    # Classification: High Importance
+    # Type: Happy Path
+    # Scenario: Email presence validation
+    # Impact: Data integrity
+    it { is_expected.to validate_presence_of(:email) }
+    
+    # Classification: High Importance
+    # Type: Edge Case
+    # Scenario: Email uniqueness validation
+    # Impact: Data integrity
+    it { is_expected.to validate_uniqueness_of(:email).case_insensitive.scoped_to(:provider) }
+
+    # Classification: High Importance
+    # Type: Edge Case
+    # Scenario: UID uniqueness validation
+    # Impact: Data integrity
+    it { is_expected.to validate_uniqueness_of(:uid).scoped_to(:provider) }
+  end
+
+  describe '#full_name' do
+    context 'when user has first_name and last_name' do
+      let(:user) { create(:user, first_name: 'John', last_name: 'Doe') }
+
+      # Classification: Low Importance
+      # Type: Happy Path
+      # Scenario: Full name concatenation with names
+      # Impact: Data presentation
+      it 'returns the concatenated name' do
+        expect(user.full_name).to eq('John Doe')
+      end
+    end
+
+    context 'when user only has username' do
+      let(:user) { create(:user, first_name: '', last_name: '', username: 'johndoe') }
+
+      # Classification: Low Importance
+      # Type: Happy Path
+      # Scenario: Full name fallback to username
+      # Impact: Data presentation
+      it 'returns the username' do
+        expect(user.full_name).to eq('johndoe')
+      end
+    end
+  end
+
+  describe '.from_social_provider' do
+    let(:provider) { 'google' }
+    let(:params) { { 'id' => 'user@example.com', 'email' => 'user@example.com' } }
+
+    context 'when user does not exist' do
+      # Classification: High Importance
+      # Type: Happy Path
+      # Scenario: Creating user from social provider
+      # Impact: User authentication functionality
+      it 'creates a new user' do
+        expect {
+          described_class.from_social_provider(provider, params)
+        }.to change(described_class, :count).by(1)
+      end
+    end
+
+    context 'when user already exists' do
+      let!(:existing_user) { create(:user, provider: provider, uid: 'user@example.com') }
+
+      # Classification: High Importance
+      # Type: Edge Case
+      # Scenario: Finding existing social provider user
+      # Impact: User authentication functionality
+      it 'returns the existing user' do
+        result = described_class.from_social_provider(provider, params)
+        expect(result).to eq(existing_user)
+      end
+    end
+  end
+end
+```
+
+### API Controller Spec (Repository Pattern with User Context)
+```ruby
+# frozen_string_literal: true
+
+describe 'API::V1::UsersController' do
+  # User context setup - CRITICAL for auth_headers to work
+  let(:user) { create(:user) }
+  let(:other_user) { create(:user) }
+
+  describe 'GET /api/v1/users/:id' do
+    subject { get api_v1_user_path, headers: auth_headers }
+
+    it_behaves_like 'there must not be a Set-Cookie in Header'
+
+    # Classification: High Importance
+    # Type: Happy Path
+    # Scenario: Authenticated user viewing their profile
+    # Impact: Core API functionality with user context
+    it 'returns success' do
+      subject
+      expect(response).to have_http_status(:success)
+    end
+
+    # Classification: High Importance
+    # Type: Happy Path
+    # Scenario: Returning user data for authenticated user
+    # Impact: API data delivery with user context
+    it 'returns the logged in user data' do
+      subject
+      expect(json[:user][:id]).to eq(user.id)
+      expect(json[:user][:email]).to eq(user.email)
+      expect(json[:user][:name]).to eq(user.full_name)
+    end
+
+    context 'when user is not authenticated' do
+      subject { get api_v1_user_path }  # No auth headers
+
+      # Classification: High Importance
+      # Type: Edge Case
+      # Scenario: Unauthenticated access attempt
+      # Impact: API security
+      it 'returns unauthorized status' do
+        subject
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    context 'when record is not found' do
+      # Classification: High Importance
+      # Type: Edge Case
+      # Scenario: User record not found for authenticated user
+      # Impact: API error handling with user context
+      it 'returns not found status' do
+        allow_any_instance_of(API::V1::UsersController).to receive(:current_user)
+          .and_raise(ActiveRecord::RecordNotFound)
+        subject
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
+  describe 'PUT /api/v1/users/:id' do
+    subject { put api_v1_user_path, params: { user: user_params }, headers: auth_headers }
+
+    let(:user_params) { { first_name: 'Updated', last_name: 'Name' } }
+
+    # Classification: High Importance
+    # Type: Happy Path
+    # Scenario: Authenticated user updating their profile
+    # Impact: Core business functionality with user context
+    it 'updates the user' do
+      subject
+      expect(response).to have_http_status(:success)
+      expect(user.reload.first_name).to eq('Updated')
+      expect(user.reload.last_name).to eq('Name')
+    end
+
+    context 'with different user types' do
+      context 'when user is admin' do
+        let(:user) { create(:user, :admin) }  # Assuming admin trait exists
+
+        # Classification: High Importance
+        # Type: Happy Path
+        # Scenario: Admin user updating their profile
+        # Impact: Authorization with user context
+        it 'allows profile update' do
+          subject
+          expect(response).to have_http_status(:success)
+        end
+      end
+
+      context 'when user is regular user' do
+        let(:user) { create(:user) }
+
+        # Classification: High Importance
+        # Type: Happy Path
+        # Scenario: Regular user updating their own profile
+        # Impact: Authorization with user context
+        it 'allows own profile update' do
+          subject
+          expect(response).to have_http_status(:success)
+        end
+      end
+    end
+
+    context 'with invalid params' do
+      let(:user_params) { { email: 'invalid-email' } }
+
+      # Classification: High Importance
+      # Type: Edge Case
+      # Scenario: Authenticated user with invalid user data
+      # Impact: Data validation with user context
+      it 'returns validation errors' do
+        subject
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+  end
+
+  describe 'POST /api/v1/users' do
+    subject { post '/api/v1/users', params: { user: user_params }, headers: auth_headers }
+
+    let(:user_params) { { email: 'new@example.com', password: 'password123' } }
+
+    context 'when user is admin' do
+      let(:user) { create(:user, :admin) }
+
+      # Classification: High Importance
+      # Type: Happy Path
+      # Scenario: Admin user creating new user
+      # Impact: User management functionality with admin context
+      it 'creates a new user' do
+        expect { subject }.to change(User, :count).by(1)
+        expect(response).to have_http_status(:created)
+      end
+    end
+
+    context 'when user is regular user' do
+      let(:user) { create(:user) }
+
+      # Classification: High Importance
+      # Type: Edge Case
+      # Scenario: Regular user attempting to create user
+      # Impact: Authorization security with user context
+      it 'may restrict user creation based on permissions' do
+        subject
+        # Adjust expectation based on your authorization rules
+        expect(response).to have_http_status(:forbidden)  # or :created if allowed
+      end
+    end
+  end
+
+  describe 'DELETE /api/v1/users/:id' do
+    subject { delete "/api/v1/users/#{target_user.id}", headers: auth_headers }
+
+    let(:target_user) { create(:user) }
+
+    context 'when user is admin' do
+      let(:user) { create(:user, :admin) }
+
+      # Classification: High Importance
+      # Type: Happy Path
+      # Scenario: Admin user deleting another user
+      # Impact: User management functionality with admin context
+      it 'deletes the user' do
+        target_user # ensure user exists
+        expect { subject }.to change(User, :count).by(-1)
+        expect(response).to have_http_status(:no_content)
+      end
+    end
+
+    context 'when user tries to delete themselves' do
+      let(:target_user) { user }
+
+      # Classification: High Importance
+      # Type: Edge Case
+      # Scenario: User attempting to delete their own account
+      # Impact: Account safety with user context
+      it 'may prevent self-deletion' do
+        subject
+        # Adjust expectation based on your business rules
+        expect(response).to have_http_status(:forbidden)  # or :no_content if allowed
+      end
+    end
+  end
+end
+```
+
+### Policy Spec (Repository Pattern)
+```ruby
+# frozen_string_literal: true
+
+describe UserPolicy do
+  subject { described_class }
+
+  let(:user1) { create(:user) }
+  let(:user2) { create(:user) }
+
+  permissions :update? do
+    # Classification: High Importance
+    # Type: Edge Case
+    # Scenario: User updating different user
+    # Impact: Authorization security
+    it 'denies access if user is not the same' do
+      expect(subject).not_to permit(user1, user2)
+    end
+
+    # Classification: High Importance
+    # Type: Happy Path
+    # Scenario: User updating themselves
+    # Impact: Authorization functionality
+    it 'allow access if user is the same' do
+      expect(subject).to permit(user1, user1)
+    end
+  end
+end
+```
+
+## Repository-Specific Configuration
+
+### Available Gems and Tools
+- **RSpec** with Rails integration
+- **FactoryBot** for test data
+- **Faker** for realistic fake data
+- **Shoulda Matchers** for concise validations testing
+- **WebMock** for HTTP request mocking
+- **SimpleCov** for coverage reporting
+- **Pundit** for authorization testing
+- **Devise Token Auth** for API authentication
+- **Capybara** for feature testing
+
+### Global Test Setup
+Available from `rails_helper.rb` and `spec_helper.rb`:
+```ruby
+# SimpleCov coverage tracking
+# WebMock network stubbing
+# FactoryBot syntax methods
+# Shoulda matchers integration
+# Devise test helpers for controllers and requests
+# ActiveJob test helpers
+# Time travel helpers (ActiveSupport::Testing::TimeHelpers)
+```
+
+## Best Practices Summary
+
+### For NEW Specs (Following Repository Patterns)
+- Use `describe` without RSpec prefix (repository convention)
+- Use FactoryBot for all test data creation
+- Include test classification comments for all new specs
+- Use token-based authentication with `auth_headers` for API specs (requires user context)
+- Test different user types by overriding user context in nested contexts
+- Test unauthenticated scenarios by omitting auth_headers
+- Use shared examples when available
+- Use `json` helper for parsing API responses
+
+### Universal Rules
+- External web requests MUST be mocked (WebMock configured globally)
+- Use meaningful test descriptions and contexts
+- Ensure specs are isolated and independent
+- Follow Rails conventions for file organization
+
+## Required Steps for New Spec Generation (MUST Follow in Order)
+
+### 1. Generate Branch Coverage Report
+```bash
+# Get files changed compared to main branch
+git diff main..HEAD --name-only | grep '\.rb$' | grep -v _spec.rb > source_files.txt
+
+# Check which files have missing spec coverage
+while read file; do
+  spec_file=$(echo "$file" | sed 's|^app/|spec/|' | sed 's|^lib/|spec/lib/|' | sed 's/\.rb$/_spec.rb/')
+  if [ ! -f "$spec_file" ]; then
+    echo "MISSING SPEC: $file -> $spec_file"
+  fi
+done < source_files.txt
+```
+
+### 2. Run New Specs
+```bash
+# Run all specs (Docker-based)
+./bin/rspec
+
+# Run specific new spec file  
+./bin/rspec spec/path/to/new_spec.rb --format documentation
+
+# Run with coverage
+COVERAGE=true ./bin/rspec spec/path/to/new_spec.rb
+
+# Clean up containers after testing
+./bin/rspec spec/path/to/new_spec.rb --remove-containers
+```
+
+### 3. Handle Failed Specs
+For each failed spec:
+1. Classify as either:
+   - **Spec Issue**: Fix and rerun at least 5 times until consistently passing
+   - **Genuine Bug**: Mark as failed, add TODO comment
+
+### 4. Verify Branch Coverage
+```bash
+# Run coverage for changed files only (Docker-based)
+COVERAGE=true ./bin/rspec $(git diff main..HEAD --name-only | grep '\.rb$' | grep -v _spec.rb | sed 's/^app/spec/' | sed 's/\.rb$/_spec.rb/' | xargs ls 2>/dev/null)
+
+# Alternative: Run coverage for all specs
+COVERAGE=true ./bin/rspec
+```
+
+## Test Classification Requirements (NEW SPECS ONLY)
+
+### Required Comment Structure for NEW Specs
+EVERY NEW spec MUST have these classification comments:
+```ruby
+# Classification: [High Importance|Low Importance|Invalid]
+# Type: [Happy Path|Edge Case|N/A]
+# Scenario: [Brief description]
+# Impact: [Business impact]
+```
+
+### Classification Guidelines
+
+#### High Importance Criteria
+- Core business functionality (CRUD operations, API endpoints)
+- Security-related features (authentication, authorization)
+- Data integrity and validation
+- Critical workflow steps
+- Model associations and callbacks
+
+#### Low Importance Criteria
+- UI/UX features (formatting, display)
+- Logging and monitoring
+- Configuration settings
+- Helper methods
+
+#### Invalid Criteria
+- Framework internals (Rails, gem internals)
+- Third-party library behavior
+- Database engine specifics
+
+### Handling Failed Specs
+
+#### Genuine Bug Example
+```ruby
+# Classification: High Importance
+# Type: Edge Case
+# Scenario: Default role deletion prevention
+# Impact: System data integrity
+# Status: FAILED - Genuine Bug
+# TODO: Bug - Default role can be deleted despite callback
+it 'prevents deletion of default roles' do
+  default_role = create(:admin_role)
+  expect { default_role.destroy! }.to raise_error(ActiveRecord::RecordNotDestroyed)
+end
+```
+
+## Repository-Specific Rules for Spec Generation
+
+### API Specs
+- Always use token-based authentication with `auth_headers`
+- Include shared examples for API behavior
+- Test both success and error cases with proper user context
+- Test different user types (admin, regular user, etc.) by overriding user context
+- Test unauthenticated scenarios by omitting auth_headers
+- Use proper HTTP status code expectations
+- Test user-specific data access and permissions
+
+### Model Specs
+- Test all validations including edge cases
+- Test scopes and class methods
+- Test callbacks and their side effects
+
+### Policy Specs (Pundit)
+- Test all permission methods
+- Test different user contexts
+- Use the `permissions` block syntax
+
+## Final Review Checklist for New Specs
+
+1. **Test Execution** ✓
+   - [ ] All tests run successfully locally
+   - [ ] All new specs either pass or are marked as failed bugs with TODO comments
+   - [ ] No flaky tests (run at least 5 times if previously failed)
+
+2. **Coverage Requirements** ✓
+   - [ ] 100% line coverage for branch diff (main..HEAD)
+   - [ ] Coverage report generated and verified
+
+3. **Classification** ✓ (NEW SPECS ONLY)
+   - [ ] Every NEW spec has required classification comments
+   - [ ] All edge cases identified and properly classified
+
+4. **Repository Standards** ✓
+   - [ ] Follows repository file structure and naming conventions
+   - [ ] Uses FactoryBot for test data
+   - [ ] API specs use token authentication
+   - [ ] Model specs use Shoulda matchers where appropriate
+
+5. **Bug Documentation** ✓
+   - [ ] Failed specs due to genuine bugs have TODO comments
+   - [ ] Spec issues fixed and verified stable
+
+## Critical Rules for Rails API Sample Project Spec Generation
+
+1. **MUST** generate specs for missing coverage comparing current branch with main
+2. **MUST** achieve 100% line coverage for branch diff
+3. **MUST** use FactoryBot for all test data creation
+4. **MUST** include test classification comments for ALL new specs
+6. **MUST** use repository authentication patterns (devise-token-auth with auth_headers)
+7. **MUST** test multiple user contexts (admin, regular user, unauthenticated)
+8. **MUST** prioritize test quality over quantity - focus on critical business logic
+9. **MUST** follow existing repository patterns for consistency
+10. **MUST** document genuine bugs with TODO comments
+11. **MUST** verify specs pass consistently (run multiple times if needed)
+12. **MUST** use WebMock for external service mocking
+
+This updated guide ensures new specs follow this repository's specific conventions while maintaining comprehensive test coverage.
