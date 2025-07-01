@@ -38,7 +38,6 @@ WORKDIR $APP_HOME
 
 # Copy dependencies files and install libraries.
 COPY --link Gemfile Gemfile.lock package.json yarn.lock .yarnrc.yml .ruby-version ./
-COPY --link .yarn .yarn
 
 RUN corepack enable
 RUN gem install bundler && bundle install -j 4 && yarn install --immutable && \
@@ -59,7 +58,7 @@ FROM base
 
 # Install packages needed for deployment
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libpq-dev libvips libjemalloc2 libyaml-dev && \
+    apt-get install --no-install-recommends -y git curl libpq-dev libvips libjemalloc2 libyaml-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create app directory.

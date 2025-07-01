@@ -38,11 +38,20 @@ class User < ApplicationRecord
          :recoverable, :trackable, :validatable
   include DeviseTokenAuth::Concerns::User
 
+  # Associations
+  has_many :user_roles, dependent: :destroy
+  has_many :roles, through: :user_roles
+
   validates :uid, uniqueness: { scope: :provider }
 
   attribute :impersonated_by, :integer
 
+  # Accept nested attributes for roles
+  accepts_nested_attributes_for :user_roles, allow_destroy: true
+  attr_accessor :role_ids
+
   before_validation :init_uid
+  after_save :sync_roles, if: :role_ids
 
   RANSACK_ATTRIBUTES = %w[id email first_name last_name username sign_in_count current_sign_in_at
                           last_sign_in_at current_sign_in_ip last_sign_in_ip provider uid
@@ -61,9 +70,43 @@ class User < ApplicationRecord
     "#{first_name} #{last_name}"
   end
 
+  # Serialize roles in the JSON response
+  def as_json(options = {})
+    super(options.merge(
+      include: {
+        roles: { only: [:id, :name] }
+      }
+    ))
+  end
+
   private
 
   def init_uid
     self.uid = email if uid.blank? && provider == 'email'
+  end
+
+  # Sync roles based on role_ids attribute
+  def sync_roles
+    return unless role_ids.is_a?(Array)
+
+    # Convert string IDs to integers and filter out invalid ones
+    role_ids_array = role_ids.map(&:to_i).uniq
+    
+    # Filter out invalid role IDs by checking they exist
+    valid_role_ids = role_ids_array & Role.where(id: role_ids_array).pluck(:id)
+    
+    # Remove roles that are not in the new valid role_ids
+    user_roles.where.not(role_id: valid_role_ids).destroy_all
+    
+    # Get existing role IDs to avoid duplicates
+    existing_role_ids = user_roles.pluck(:role_id)
+    new_role_ids = valid_role_ids - existing_role_ids
+    
+    # Bulk create new user roles
+    new_user_roles = new_role_ids.map do |role_id|
+      { user_id: id, role_id: role_id, created_at: Time.current, updated_at: Time.current }
+    end
+    
+    UserRole.insert_all(new_user_roles) if new_user_roles.any?
   end
 end

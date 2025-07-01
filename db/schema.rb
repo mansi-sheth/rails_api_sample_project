@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_04_01_200354) do
+ActiveRecord::Schema[8.0].define(version: 2025_06_20_095634) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -167,12 +167,30 @@ ActiveRecord::Schema[8.0].define(version: 2025_04_01_200354) do
     t.index ["scheduled_at"], name: "index_good_jobs_on_scheduled_at", where: "(finished_at IS NULL)"
   end
 
+  create_table "roles", force: :cascade do |t|
+    t.string "name", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.boolean "default", default: false, null: false
+    t.index ["name"], name: "index_roles_on_name", unique: true
+  end
+
   create_table "settings", force: :cascade do |t|
     t.string "key", null: false
     t.string "value"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["key"], name: "index_settings_on_key", unique: true
+  end
+
+  create_table "user_roles", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "role_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["role_id"], name: "index_user_roles_on_role_id"
+    t.index ["user_id", "role_id"], name: "index_user_roles_on_user_id_and_role_id", unique: true
+    t.index ["user_id"], name: "index_user_roles_on_user_id"
   end
 
   create_table "users", id: :serial, force: :cascade do |t|
@@ -200,4 +218,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_04_01_200354) do
   end
 
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "user_roles", "roles"
+  add_foreign_key "user_roles", "users"
 end

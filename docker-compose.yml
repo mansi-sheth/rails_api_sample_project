@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - 3000:3000
+      - 3001:3000
     environment:
       POSTGRES_USER: postgres
       POSTGRES_HOST: db
@@ -16,8 +16,6 @@ services:
       - node_modules:/src/app/node_modules
     depends_on:
       - db
-    links:
-      - db:db
     healthcheck:
         test: ["CMD", "curl", "-f", "http://localhost:3000"]
         interval: 1m30s

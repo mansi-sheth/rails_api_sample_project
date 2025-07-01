@@ -10,3 +10,8 @@ json.uid        user.uid
 json.provider   user.provider
 json.created_at user.created_at
 json.updated_at user.updated_at
+
+json.roles user.roles do |role|
+  json.id   role.id
+  json.name role.name
+end

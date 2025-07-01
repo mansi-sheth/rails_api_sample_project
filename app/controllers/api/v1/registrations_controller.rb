@@ -9,7 +9,9 @@ module API
       private
 
       def sign_up_params
-        params.expect(user: %i[email password password_confirmation username first_name last_name])
+        params.require(:user).permit(:email, :password, :password_confirmation,
+                                   :username, :first_name, :last_name,
+                                   role_ids: [])
       end
 
       def render_create_success
@@ -17,7 +19,7 @@ module API
       end
 
       def render_error(status, message, _data = nil)
-        render json: { errors: Array.wrap(message:) }, status:
+        render json: { errors: Array.wrap(message) }, status:
       end
     end
   end
